@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  app:
+    image: 'jc21/nginx-proxy-manager:latest'
+    networks:
+      - npm_network
+    ports:
+      - "80:80"       # HTTP
+      - "81:81"       # Admin UI
+      - "443:443"     # HTTPS
+    environment:
+      DB_MYSQL_HOST: "db"
+      DB_MYSQL_PORT: 3306
+      DB_MYSQL_USER: "npm"
+      DB_MYSQL_PASSWORD: "npm_password"
+      DB_MYSQL_NAME: "npm"
+    depends_on:
+      - db
+    volumes:
+      - letsencrypt_data:/etc/letsencrypt
+      - npm_config:/config
+
+  db:
+    image: 'jc21/mariadb-aria:latest'
+    networks:
+      - npm_network
+    environment:
+      MYSQL_ROOT_PASSWORD: "root_password"
+      MYSQL_DATABASE: "npm"
+      MYSQL_USER: "npm"
+      MYSQL_PASSWORD: "npm_password"
+    volumes:
+      - npm_data:/var/lib/mysql
+
+networks:
+  npm_network:
+    driver: overlay
+
+volumes:
+  npm_data:
+  letsencrypt_data:
+  npm_config:
