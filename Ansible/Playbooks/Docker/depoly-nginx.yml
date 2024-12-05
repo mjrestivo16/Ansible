@@ -1,0 +1,54 @@
+---
+- name: Deploy Nginx Proxy Manager on Docker Swarm
+  hosts: docker_manager
+  become: yes
+  vars:
+    compose_file: "/home/mark/ansible/docker/nginx_proxy.yml"
+    stack_name: "nginx_proxy_manager"
+
+  tasks:
+    - name: Ensure Docker is installed
+      ansible.builtin.command:
+        cmd: docker --version
+      failed_when: false
+      register: docker_installed
+
+    - name: Fail if Docker is not installed
+      ansible.builtin.fail:
+        msg: "Docker is not installed on the target machine. Please install Docker first."
+      when: "'Docker version' not in docker_installed.stdout"
+
+    - name: Ensure the target is a Swarm manager
+      ansible.builtin.command:
+        cmd: docker node ls
+      failed_when: false
+      register: swarm_status
+
+    - name: Fail if the target is not a Swarm manager
+      ansible.builtin.fail:
+        msg: "The target node is not a Swarm manager. Please initialize or join the Docker Swarm."
+      when: "'Leader' not in swarm_status.stdout"
+
+    - name: Copy the Docker Compose file to the target node
+      ansible.builtin.copy:
+        src: "{{ compose_file }}"
+        dest: "/tmp/docker-compose.yml"
+        mode: '0644'
+
+    - name: Deploy the stack
+      ansible.builtin.command:
+        cmd: "docker stack deploy -c /tmp/docker-compose.yml {{ stack_name }}"
+      register: deploy_output
+
+    - name: Display deployment output
+      debug:
+        var: deploy_output.stdout
+
+    - name: Verify the stack is running
+      ansible.builtin.command:
+        cmd: "docker stack ps {{ stack_name }}"
+      register: stack_status
+
+    - name: Show stack status
+      debug:
+        var: stack_status.stdout
