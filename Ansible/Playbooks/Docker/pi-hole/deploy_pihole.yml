@@ -1,9 +1,10 @@
 ---
-- name: Deploy Pi-hole using Docker Compose
+- name: Deploy Pi-hole on Docker Swarm with updated ports
   hosts: managers
   become: yes
   vars:
-    compose_file_path: "/home/ansible/docker/pihole/docker-compose_pi-hole.yml" # this will need to be changed on new setups
+    stack_name: "pihole"
+    compose_file_path: "/home/ansible/docker/pihole/docker-compose_pihole.yml"
     compose_directory: "/home/ansible/docker/pihole"
 
   tasks:
@@ -18,16 +19,15 @@
         msg: "Docker is not installed on the target machine. Please install Docker first."
       when: "'Docker version' not in docker_installed.stdout"
 
-    - name: Ensure Docker Compose is installed
+    - name: Check Docker Swarm status
       ansible.builtin.command:
-        cmd: docker-compose --version
-      failed_when: false
-      register: compose_installed
+        cmd: docker info
+      register: swarm_info
 
-    - name: Fail if Docker Compose is not installed
-      ansible.builtin.fail:
-        msg: "Docker Compose is not installed on the target machine. Please install Docker Compose first."
-      when: "'docker-compose version' not in compose_installed.stdout"
+    - name: Initialize Docker Swarm if not active
+      ansible.builtin.command:
+        cmd: docker swarm init
+      when: "'Swarm: active' not in swarm_info.stdout"
 
     - name: Ensure compose directory exists
       ansible.builtin.file:
@@ -42,39 +42,48 @@
           version: "3.8"
           services:
             pihole:
-              container_name: pihole
               image: pihole/pihole:latest
+              networks:
+                - pihole_network
               ports:
-                - "53:53/tcp"
-                - "53:53/udp"
-                - "67:67/udp"
-                - "80:80/tcp"
+                - "8053:53/tcp"
+                - "8053:53/udp"
+                - "8067:67/udp"
+                - "8080:80/tcp"  # HTTP accessible on port 8080
               environment:
                 TZ: 'America/Chicago'
+                WEBPASSWORD: 'secure_password'
+                FTLCONF_LOCAL_IPV4: "0.0.0.0"
               volumes:
-                - './etc-pihole:/etc/pihole'
-                - './etc-dnsmasq.d:/etc/dnsmasq.d'
-              cap_add:
-                - NET_ADMIN
-              restart: unless-stopped
+                - pihole_etc:/etc/pihole
+                - dnsmasq_etc:/etc/dnsmasq.d
+              deploy:
+                mode: replicated
+                replicas: 1
+                restart_policy:
+                  condition: on-failure
+          networks:
+            pihole_network:
+              driver: overlay
+          volumes:
+            pihole_etc:
+            dnsmasq_etc:
         mode: '0644'
 
-    - name: Deploy Pi-hole container using Docker Compose
+    - name: Deploy Pi-hole stack to Docker Swarm
       ansible.builtin.shell:
-        cmd: "docker-compose -f {{ compose_file_path }} up -d"
-      args:
-        chdir: "{{ compose_directory }}"
-      register: compose_output
+        cmd: "docker stack deploy -c {{ compose_file_path }} {{ stack_name }}"
+      register: deploy_output
 
-    - name: Display Docker Compose output
+    - name: Display stack deployment output
       debug:
-        var: compose_output.stdout
+        var: deploy_output.stdout
 
     - name: Verify Pi-hole service is running
       ansible.builtin.command:
-        cmd: docker ps --filter "name=pihole"
-      register: docker_ps_output
+        cmd: docker service ls --filter "name={{ stack_name }}_pihole"
+      register: docker_service_status
 
-    - name: Display running Pi-hole container
+    - name: Display running Pi-hole service
       debug:
-        var: docker_ps_output.stdout
+        var: docker_service_status.stdout

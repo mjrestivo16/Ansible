@@ -8,10 +8,13 @@ services:
       - "53:53/tcp"
       - "53:53/udp"
       - "67:67/udp" # Only required if you are using Pi-hole as your DHCP server
-      - "80:80/tcp"
-    environment:
-      TZ: 'America/Chicago'
-      # WEBPASSWORD: 'set a secure password here or it will be random'
+      - "8080:80/tcp"
+          environment:
+        TZ: 'America/Chicago'
+        WEBPASSWORD: P@ss@t2004  # Set a web interface password
+        VIRTUAL_HOST: 'pihole.local'  # Optional for hostname-based access
+        VIRTUAL_PORT: 8080           # Use port 8080 for web access
+        FTLCONF_LOCAL_IPV4: "0.0.0.0" # Allow external access to the web interface
     # Volumes store your data between container upgrades
     volumes:
       - './etc-pihole:/etc/pihole'
