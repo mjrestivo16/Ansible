@@ -14,7 +14,7 @@ services:
         WEBPASSWORD: P@ss@t2004  # Set a web interface password
         VIRTUAL_HOST: 'pihole.local'  # Optional for hostname-based access
         VIRTUAL_PORT: 8080           # Use port 8080 for web access
-        FTLCONF_LOCAL_IPV4: "0.0.0.0" # Allow external access to the web interface
+        FTLCONF_LOCAL_IPV4: 192.168.7.21 # Allow external access to the web interface
     # Volumes store your data between container upgrades
     volumes:
       - './etc-pihole:/etc/pihole'

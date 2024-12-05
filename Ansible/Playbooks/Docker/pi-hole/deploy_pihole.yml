@@ -52,8 +52,8 @@
                 - "8080:80/tcp"  # HTTP accessible on port 8080
               environment:
                 TZ: 'America/Chicago'
-                WEBPASSWORD: 'secure_password'
-                FTLCONF_LOCAL_IPV4: "0.0.0.0"
+                WEBPASSWORD: P@ss@t2004
+                FTLCONF_LOCAL_IPV4: 192.168.7.21
               volumes:
                 - pihole_etc:/etc/pihole
                 - dnsmasq_etc:/etc/dnsmasq.d
