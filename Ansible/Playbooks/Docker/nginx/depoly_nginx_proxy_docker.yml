@@ -3,7 +3,7 @@
   hosts: managers
   become: yes
   vars:
-    compose_file: "/home/mark/ansible/docker/nginx_proxy.yml"
+    compose_file: "/home/mark/ansible/docker/nginx_proxy.yml" # this will need to hange
     stack_name: "nginx_proxy_manager"
     email_address: "mjrestivo15@outlook.com"
     domain_name: "echoedgedigital.com"
