@@ -1,0 +1,56 @@
+- hosts: managers
+  become: yes
+  tasks:
+
+    # If there is a swarm existing uncomment
+    - name: Leave any existing swarm
+      shell: docker swarm leave --force
+      ignore_errors: true
+
+
+    # Step 1: Initialize Docker Swarm on the manager node
+    - name: Initialize Docker Swarm on manager
+      shell: docker swarm init --advertise-addr {{ ansible_host }}
+      register: swarm_init
+      when: inventory_hostname == groups['managers'][0]
+      failed_when: "'Error' in swarm_init.stderr or swarm_init.rc != 0"
+
+    # Step 2: Get the join token for worker nodes
+    - name: Get the join token
+      shell: docker swarm join-token -q worker
+      register: worker_token
+      when: inventory_hostname == groups['managers'][0]
+      changed_when: False
+
+    # Step 3: Set worker token as a fact globally
+    - name: Share worker token with all hosts
+      set_fact:
+        swarm_worker_token: "{{ worker_token.stdout }}"
+      when: inventory_hostname == groups['managers'][0]
+      run_once: true
+
+    # Step 4: Add the current user to the Docker group
+    - name: Add user permissions
+      shell: "usermod -aG docker {{ ansible_env.SUDO_USER }}"
+      ignore_errors: true
+
+- hosts: workers
+  become: yes
+  tasks:
+    # Step 5: Leave existing swarm (if any)
+    - name: Leave any existing swarm
+      shell: docker swarm leave --force
+      ignore_errors: true
+
+    # Step 6: Join the worker nodes to the swarm
+    - name: Join swarm as worker
+      shell: docker swarm join --token {{ hostvars[groups['managers'][0]].swarm_worker_token }} {{ hostvars[groups['managers'][0]].ansible_host }}:2377
+      register: join_output
+      failed_when: "'Error' in join_output.stderr or join_output.rc != 0"
+      ignore_errors: true
+
+    # Step 7: Add the current user to the Docker group
+    - name: Add user permissions
+      shell: "usermod -aG docker {{ ansible_env.SUDO_USER }}"
+      ignore_errors: true
+

@@ -1,0 +1,55 @@
+---
+- name: Set up SSH Key-based Authentication
+  hosts: RPi
+  
+  become: yes
+  vars:
+    ssh_user: mark
+    ssh_key_path: /root/.ssh/id_rsa
+
+  tasks:
+    - name: Check if SSH private key exists
+      stat:
+        path: "{{ ssh_key_path }}"
+      register: ssh_key
+
+    - name: Generate SSH key pair if it doesn't exist
+      command: ssh-keygen -t rsa -b 2048 -f {{ ssh_key_path }} -N ''
+      when: not ssh_key.stat.exists
+
+    - name: Read the public key
+      slurp:
+        src: "{{ ssh_key_path }}.pub"
+      register: public_key
+      delegate_to: localhost
+
+    - name: Ensure the .ssh directory exists
+      file:
+        path: "/home/{{ ssh_user }}/.ssh"
+        state: directory
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+        mode: '0700'
+
+    - name: Add public key to authorized_keys
+      lineinfile:
+        path: "/home/{{ ssh_user }}/.ssh/authorized_keys"
+        line: "{{ public_key.content | b64decode }}"
+        create: yes
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+        mode: '0600'
+
+    - name: Ensure proper permissions on .ssh
+      file:
+        path: "/home/{{ ssh_user }}/.ssh"
+        state: directory
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+        mode: '0700'
+
+    - name: Add host to known_hosts
+      known_hosts:
+        name: "{{ inventory_hostname }}"
+        key: "{{ lookup('pipe', 'ssh-keyscan -H ' + inventory_hostname) }}"
+        path: "/root/.ssh/known_hosts"
