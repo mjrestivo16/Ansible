@@ -1,6 +1,6 @@
 ---
 - name: Deploy Nginx Proxy Manager on Docker Swarm
-  hosts: docker_manager
+  hosts: managers
   become: yes
   vars:
     compose_file: "/home/mark/ansible/docker/nginx_proxy.yml"
