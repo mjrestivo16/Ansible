@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  app:
+  nginx_proxy_manager:
     image: 'jc21/nginx-proxy-manager:latest'
     networks:
       - npm_network

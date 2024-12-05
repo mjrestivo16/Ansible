@@ -1,0 +1,113 @@
+---
+- name: Deploy Nginx Proxy Manager on Docker Swarm with SSL support
+  hosts: managers
+  become: yes
+  vars:
+    compose_file: "/home/mark/ansible/docker/nginx_proxy.yml"
+    stack_name: "nginx_proxy_manager"
+    email_address: "mjrestivo15@outlook.com"
+    domain_name: "echoedgedigital.com"
+    cert_email: "mjrestivo15@outlook.com"
+    cert_domains: "echoedgedigital.com"
+    cert_name: "nginx_proxy_manager"
+    cloudflare_credentials: "/etc/letsencrypt/cloudflare.ini"
+
+  tasks:
+    - name: Ensure Docker is installed
+      ansible.builtin.command:
+        cmd: docker --version
+      failed_when: false
+      register: docker_installed
+
+    - name: Fail if Docker is not installed
+      ansible.builtin.fail:
+        msg: "Docker is not installed on the target machine. Please install Docker first."
+      when: "'Docker version' not in docker_installed.stdout"
+
+    - name: Ensure the target is a Swarm manager
+      ansible.builtin.command:
+        cmd: docker node ls
+      failed_when: false
+      register: swarm_status
+
+    - name: Fail if the target is not a Swarm manager
+      ansible.builtin.fail:
+        msg: "The target node is not a Swarm manager. Please initialize or join the Docker Swarm."
+      when: "'Leader' not in swarm_status.stdout"
+
+    - name: Open required ports for HTTP and HTTPS
+      ansible.builtin.shell:
+        cmd: |
+          ufw allow 80/tcp
+          ufw allow 443/tcp
+      register: firewall_changes
+      failed_when: "'Error' in firewall_changes.stderr"
+
+    - name: Copy the Docker Compose file to the target node
+      ansible.builtin.copy:
+        src: "{{ compose_file }}"
+        dest: "/tmp/docker-compose.yml"
+        mode: '0644'
+
+    - name: Ensure /etc/letsencrypt directory exists
+      ansible.builtin.file:
+        path: "/etc/letsencrypt"
+        state: directory
+        mode: '0755'
+
+    - name: Copy the Cloudflare credentials file to the target node
+      ansible.builtin.copy:
+        src: "/home/mark/ansible/docker/cloudflare.ini" # change this to the location of the ini file on ansible
+        dest: "{{ cloudflare_credentials }}"
+        mode: '0600'
+
+    - name: Deploy the stack
+      ansible.builtin.command:
+        cmd: "docker stack deploy -c /tmp/docker-compose.yml {{ stack_name }}"
+      register: deploy_output
+
+    - name: Display deployment output
+      debug:
+        var: deploy_output.stdout
+
+    - name: Verify the stack is running
+      ansible.builtin.command:
+        cmd: "docker stack ps {{ stack_name }}"
+      register: stack_status
+
+    - name: Show stack status
+      debug:
+        var: stack_status.stdout
+
+    # Obtain SSL Certificate with Certbot
+    - name: Install Certbot and Cloudflare plugin
+      ansible.builtin.apt:
+        name:
+          - certbot
+          - python3-certbot-dns-cloudflare
+        state: present
+        update_cache: yes
+
+    - name: Verify Certbot installation
+      command: certbot --version
+      register: certbot_check
+      failed_when: "'certbot' not in certbot_check.stdout"
+
+    - name: Obtain SSL certificate using DNS challenge
+      shell: |
+        certbot certonly \
+        --dns-cloudflare \
+        --dns-cloudflare-credentials {{ cloudflare_credentials }} \
+        --cert-name "{{ cert_name }}" \
+        --agree-tos --email "{{ cert_email }}" \
+        --preferred-challenges dns \
+        --domains "{{ cert_domains }}"
+      register: certbot_output
+
+    - name: Display Certbot output
+      debug:
+        var: certbot_output.stdout
+
+    - name: Restart Nginx Proxy Manager service to apply SSL
+      ansible.builtin.command:
+        cmd: docker service update --force nginx_proxy_manager_nginx_proxy_manager # this name may change
