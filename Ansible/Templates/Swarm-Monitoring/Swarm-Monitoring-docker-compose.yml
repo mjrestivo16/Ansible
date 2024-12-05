@@ -1,0 +1,185 @@
+version: "3.8"
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "1m"
+    max-file: "1"
+
+x-common-labels: &default-labels
+  logging: "promtail"
+  logging_jobname: "containerlogs"
+  stackname: "docker-monitoring-stack-gpnc"
+
+services:
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_USERS_DEFAULT_THEME=dark
+      - GF_LOG_MODE=console
+      - GF_LOG_LEVEL=critical
+      - GF_PANELS_ENABLE_ALPHA=true
+      - GF_FEATURE_TOGGLES_ENABLE=accessControlOnCall,lokiLogsDataplane
+      - GF_INSTALL_PLUGINS=grafana-polystat-panel,https://storage.googleapis.com/integration-artifacts/grafana-lokiexplore-app/grafana-lokiexplore-app-latest.zip;grafana-lokiexplore-app
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - /home/mark/ansible/docker/dashboards:/var/lib/grafana/dashboards
+      - /home/mark/ansible/docker/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+    labels:
+      <<: *default-labels
+    logging: *default-logging
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--log.level=error'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.external-url=http://localhost:9090'
+    volumes:
+      - prometheus-data:/prometheus
+    depends_on:
+      - alertmanager
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+    labels:
+      <<: *default-labels
+    logging: *default-logging
+
+  cadvisor:
+    image: google/cadvisor:latest
+    deploy:
+      mode: global
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitoring
+    labels:
+      <<: *default-labels
+    logging: *default-logging
+
+  node-exporter:
+    image: prom/node-exporter:${NODE_EXPORTER_VERSION:-v1.5.0}
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points'
+      - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    networks:
+      - monitoring
+    labels:
+      <<: *default-labels
+    logging: *default-logging
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--log.level=error'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    volumes:
+      - alertmanager_data:/etc/alertmanager
+    environment:
+      - SMTP_HOST=smtp.google.com
+      - SMTP_PORT=465
+      - SMTP_USER=mjrestivo16@gmail.com
+      - SMTP_PASS=pdsh rtii jkyz vrkfx
+    ports:
+      - "9093:9093"
+    networks:
+      - monitoring
+    depends_on:
+      - uncomplicated-alert-receiver
+    labels:
+      <<: *default-labels
+    logging: *default-logging
+
+  uncomplicated-alert-receiver:
+    image: custom/uncomplicated-alert-receiver:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SMTP_HOST=smtp.google.com
+      - SMTP_PORT=465
+      - SMTP_USER=mjrestivo16@gmail.com
+      - SMTP_PASS=pdsh rtii jkyz vrkfx
+    networks:
+      - monitoring
+    labels:
+      <<: *default-labels
+    logging: *default-logging
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    networks:
+      - monitoring
+    labels:
+      <<: *default-labels
+    logging: *default-logging
+
+  loki:
+    image: grafana/loki:latest
+    user: root
+    ports:
+      - "3100:3100"
+    command: 
+      - "--config.file=/etc/loki/loki.yaml"
+    volumes:
+      - /var/lib/docker/files/loki/loki.yaml:/etc/loki/loki.yaml
+      - /var/lib/docker/files/loki/rules.yaml:/etc/loki/rules/fake/loki-rules.yml
+    networks:
+      - monitoring
+    labels:
+      <<: *default-labels
+    logging: *default-logging
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    volumes:
+      - alertmanager_data:/etc/alertmanager
+    command: 
+      - "--config.file=/etc/promtail/docker-config.yaml"
+    depends_on:
+      - loki
+    networks:
+      - monitoring
+    labels:
+      <<: *default-labels
+    logging: *default-logging
+
+volumes:
+  grafana-data: {}
+  prometheus-data: {}
+  alertmanager_data: {}
+
+networks:
+  monitoring:
+    name: monitoring
