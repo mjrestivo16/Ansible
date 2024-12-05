@@ -1,0 +1,93 @@
+---
+- name: Deploy Docker Monitoring Stack
+  hosts: docker_manager
+  become: yes
+  vars:
+    ansible_user: "mark"
+    stack_name: "monitoring_stack"
+    compose_file: "/home/{{ ansible_user }}/monitoring/docker-compose-monitoring-stack.yml"
+
+  tasks:
+    - name: Ensure monitoring directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      with_items:
+        - /home/{{ ansible_user }}/monitoring
+        - /home/{{ ansible_user }}/monitoring/grafana
+        - /home/{{ ansible_user }}/monitoring/grafana/config
+        - /home/{{ ansible_user }}/monitoring/grafana/dashboards
+        - /home/{{ ansible_user }}/monitoring/prometheucd s
+        - /home/{{ ansible_user }}/monitoring/loki
+        - /home/{{ ansible_user }}/monitoring/promtail
+
+    - name: Copy Grafana configuration files
+      ansible.builtin.template:
+        src: templates/grafana/config/{{ item }}
+        dest: /home/{{ ansible_user }}/monitoring/grafana/config/{{ item }}
+        mode: '0644'
+      with_items:
+        - dashboards.yml
+        - datasources.yml
+        - app.yaml
+        - grafana.ini
+
+    - name: Copy Grafana dashboard files
+      ansible.builtin.copy:
+        src: templates/grafana/dashboards/{{ item }}
+        dest: /home/{{ ansible_user }}/monitoring/grafana/dashboards/{{ item }}
+        mode: '0644'
+      with_items:
+        - node-metrics.json
+        - container-metrics.json
+        - log-search.json
+
+    - name: Copy Prometheus configuration files
+      ansible.builtin.copy:
+        src: templates/prometheus/{{ item }}
+        dest: /home/{{ ansible_user }}/monitoring/prometheus/{{ item }}
+        mode: '0644'
+      with_items:
+        - prometheus.yml
+        - recording-rules.yml
+        - alerting-rules.yml
+
+    - name: Copy Loki configuration files
+      ansible.builtin.copy:
+        src: templates/loki/{{ item }}
+        dest: /home/{{ ansible_user }}/monitoring/loki/{{ item }}
+        mode: '0644'
+      with_items:
+        - loki.yaml
+        - rules.yaml
+
+    - name: Copy Promtail configuration file
+      ansible.builtin.copy:
+        src: templates/promtail/promtail.yaml
+        dest: /home/{{ ansible_user }}/monitoring/promtail/promtail.yaml
+        mode: '0644'
+
+    - name: Create Docker Compose file
+      ansible.builtin.template:
+        src: templates/docker-compose.yml
+        dest: "{{ compose_file }}"
+        mode: '0644'
+
+    - name: Deploy the Docker stack
+      ansible.builtin.command:
+        cmd: "docker stack deploy -c {{ compose_file }} {{ stack_name }}"
+      register: deploy_output
+
+    - name: Show stack deployment output
+      ansible.builtin.debug:
+        var: deploy_output.stdout
+
+    - name: Verify the stack is running
+      ansible.builtin.command:
+        cmd: "docker stack ps {{ stack_name }}"
+      register: stack_status
+
+    - name: Show stack status
+      ansible.builtin.debug:
+        var: stack_status.stdout
