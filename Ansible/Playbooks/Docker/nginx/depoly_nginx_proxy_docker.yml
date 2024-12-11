@@ -3,8 +3,9 @@
   hosts: managers
   become: yes
   vars:
-    compose_file: "/home/mark/ansible/docker/nginx_proxy.yml" # this will need to hange
-    stack_name: "nginx_proxy_manager"
+    compose_file: "/home/mark/ansible/docker/nginx_proxy.yml"
+    cloudflare_ini_path: "/home/mark/ansible/docker/cloudflare.ini"
+    stack_name: "npm"
     email_address: "mjrestivo15@outlook.com"
     domain_name: "echoedgedigital.com"
     cert_email: "mjrestivo15@outlook.com"
@@ -35,6 +36,12 @@
         msg: "The target node is not a Swarm manager. Please initialize or join the Docker Swarm."
       when: "'Leader' not in swarm_status.stdout"
 
+    - name: Ensure Swarm overlay network exists
+      ansible.builtin.command:
+        cmd: docker network create -d overlay npm_network
+      register: network_status
+      failed_when: "'Error' in network_status.stderr"
+
     - name: Open required ports for HTTP and HTTPS
       ansible.builtin.shell:
         cmd: |
@@ -49,17 +56,17 @@
         dest: "/tmp/docker-compose.yml"
         mode: '0644'
 
+    - name: Copy the Cloudflare credentials file to the target node
+      ansible.builtin.copy:
+        src: "{{ cloudflare_ini_path }}"
+        dest: "{{ cloudflare_credentials }}"
+        mode: '0600'
+
     - name: Ensure /etc/letsencrypt directory exists
       ansible.builtin.file:
         path: "/etc/letsencrypt"
         state: directory
         mode: '0755'
-
-    - name: Copy the Cloudflare credentials file to the target node
-      ansible.builtin.copy:
-        src: "/home/mark/ansible/docker/cloudflare.ini" # change this to the location of the ini file on ansible
-        dest: "{{ cloudflare_credentials }}"
-        mode: '0600'
 
     - name: Deploy the stack
       ansible.builtin.command:
@@ -79,7 +86,19 @@
       debug:
         var: stack_status.stdout
 
+    - name: Test connectivity to the database
+      ansible.builtin.shell:
+        cmd: docker exec $(docker ps -q --filter name=nginx_proxy_manager) ping -c 3 db
+      register: connectivity_test
+      failed_when: "'unreachable' in connectivity_test.stdout"
+
     # Obtain SSL Certificate with Certbot
+    - name: Ensure Python3 is installed
+      ansible.builtin.apt:
+        name: python3
+        state: present
+        update_cache: yes
+
     - name: Install Certbot and Cloudflare plugin
       ansible.builtin.apt:
         name:
@@ -104,10 +123,25 @@
         --domains "{{ cert_domains }}"
       register: certbot_output
 
+    - name: Verify SSL certificate issuance
+      ansible.builtin.command:
+        cmd: "ls /etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+      register: cert_check
+      failed_when: cert_check.rc != 0
+
     - name: Display Certbot output
       debug:
         var: certbot_output.stdout
 
     - name: Restart Nginx Proxy Manager service to apply SSL
       ansible.builtin.command:
-        cmd: docker service update --force nginx_proxy_manager_nginx_proxy_manager # this name may change
+        cmd: docker service update --force nginx_proxy_manager_nginx_proxy_manager
+
+    - name: Update Nginx Proxy Manager service with restart policy
+      ansible.builtin.command:
+        cmd: docker service update --restart-condition any nginx_proxy_manager_nginx_proxy_manager
+
+    - name: Clean up old Certbot logs
+      ansible.builtin.file:
+        path: "/var/log/letsencrypt/"
+        state: absent
