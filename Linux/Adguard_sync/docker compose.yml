@@ -1,0 +1,6 @@
+ docker run -d   
+ --name=adguardhome-sync   
+ -p 8080:8080   
+ -v ./adguardhome-sync.yaml:/config/adguardhome-sync.yaml  #the adguardhome-sync.yaml needs to be on the docker isntance its running from  
+ --restart unless-stopped   
+ ghcr.io/bakito/adguardhome-sync:latest

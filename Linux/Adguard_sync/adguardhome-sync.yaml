@@ -1,0 +1,28 @@
+# cron expression to run in daemon mode. (default; "" = runs only once)
+cron: "*/10 * * * *"
+
+origin:
+  # url of the origin instance
+  url: http://192.168.2.4:3380 # if on linux machine no port
+  username: admin
+  password: aSecurePassword
+
+# replica instance (optional, if only one)
+replica:
+  # url of the replica instance
+  url: http://192.168.2.142:3380
+  username: admin
+  password: anotherSecurePassword
+
+# Configure the sync API server, disabled if api port is 0
+api:
+  # Port, default 8080
+  port: 8080
+  # if username and password are defined, basic auth is applied to the sync API
+  username: sync
+  password: reallySecurePassword
+
+features:
+  dhcp:
+    serverConfig: false
+    staticLeases: false
