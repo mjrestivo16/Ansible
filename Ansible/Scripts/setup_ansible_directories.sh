@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set default Ansible directory
-BASE_DIR="/etc/ansible"
+BASE_DIR="/home/mark/ansible"
 
 # Ensure base directory exists
 mkdir -p "$BASE_DIR"
