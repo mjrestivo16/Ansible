@@ -1,0 +1,5 @@
+## if needed become password example
+
+ansible-playbook -i ./hosts updating.yml --ask-become-pass
+
+  
